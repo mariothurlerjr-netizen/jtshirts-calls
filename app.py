@@ -377,7 +377,7 @@ with tab_wins:
         wc1, wc2 = st.columns(2)
 
         with wc1:
-            st.markdown("#### By Hour (""" + TZ_LABEL + """)")
+            st.markdown(f"#### By Hour ({TZ_LABEL})")
             hour_disc = disc_calls.groupby("hour").size().reset_index(name="Discoveries")
             # Also show total dials per hour for context
             fdf_h2 = fdf.copy()
@@ -422,16 +422,17 @@ with tab_wins:
         if not best_hours.empty and not best_days.empty:
             top_h = ", ".join(f"{int(h)}:00" for h in best_hours["hour"])
             top_d = ", ".join(best_days["Day"])
-            st.markdown(f"""
-<div style="background:#0d2818; padding:20px 28px; border-radius:10px; border-left:4px solid #2ecc71; margin:16px 0">
-  <h4 style="color:#2ecc71; margin:0 0 8px 0">Peak Discovery Windows</h4>
-  <p style="color:#ccc; margin:0; font-size:16px; line-height:1.8">
-    <b style="color:white">Best hours:</b> {top_h} """ + TZ_LABEL + """<br>
-    <b style="color:white">Best days:</b> {top_d}<br>
-    <b style="color:white">Sweet spot:</b> {top_d} between {top_h.split(",")[0]} """ + TZ_LABEL + """
-  </p>
-</div>
-""", unsafe_allow_html=True)
+            sweet = top_h.split(",")[0]
+            html_peak = (
+                '<div style="background:#0d2818; padding:20px 28px; border-radius:10px; border-left:4px solid #2ecc71; margin:16px 0">'
+                '<h4 style="color:#2ecc71; margin:0 0 8px 0">Peak Discovery Windows</h4>'
+                '<p style="color:#ccc; margin:0; font-size:16px; line-height:1.8">'
+                f'<b style="color:white">Best hours:</b> {top_h} {TZ_LABEL}<br>'
+                f'<b style="color:white">Best days:</b> {top_d}<br>'
+                f'<b style="color:white">Sweet spot:</b> {top_d} between {sweet} {TZ_LABEL}'
+                '</p></div>'
+            )
+            st.markdown(html_peak, unsafe_allow_html=True)
 
         st.divider()
 
