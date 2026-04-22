@@ -14,6 +14,19 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+# ─── Timezone ───────────────────────────────────────────────────────────────
+# Convert all times to display timezone (default: America/New_York = ET)
+import os
+DISPLAY_TZ_NAME = os.environ.get("DISPLAY_TIMEZONE", "America/Boise")
+DISPLAY_TZ = ZoneInfo(DISPLAY_TZ_NAME)
+_tz_labels = {"New_York":"ET","Chicago":"CT","Denver":"MT","Boise":"MT","Los_Angeles":"PT","Phoenix":"MST"}
+TZ_LABEL = _tz_labels.get(DISPLAY_TZ_NAME.split("/")[-1], DISPLAY_TZ_NAME.split("/")[-1])
+
 # ─── Page config ────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -33,8 +46,14 @@ def load_data():
         return None
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    df = pd.read_sql("SELECT * FROM calls", conn, parse_dates=["start_time"])
+    # Convert start_time to display timezone
+    if not df.empty and df["start_time"].dt.tz is None:
+        df["start_time"] = df["start_time"].dt.tz_localize("UTC")
+    if not df.empty:
+        df["start_time"] = df["start_time"].dt.tz_convert(DISPLAY_TZ)
     return {
-        "calls": pd.read_sql("SELECT * FROM calls", conn, parse_dates=["start_time"]),
+        "calls": df,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -358,7 +377,7 @@ with tab_wins:
         wc1, wc2 = st.columns(2)
 
         with wc1:
-            st.markdown("#### By Hour (UTC)")
+            st.markdown("#### By Hour (""" + TZ_LABEL + """)")
             hour_disc = disc_calls.groupby("hour").size().reset_index(name="Discoveries")
             # Also show total dials per hour for context
             fdf_h2 = fdf.copy()
@@ -372,7 +391,7 @@ with tab_wins:
                 hour_merged.sort_values("Discoveries", ascending=False),
                 use_container_width=True, hide_index=True,
                 column_config={
-                    "hour": st.column_config.NumberColumn("Hour (UTC)", format="%d:00"),
+                    "hour": st.column_config.NumberColumn("Hour", format="%d:00"),
                     "Discovery %": st.column_config.ProgressColumn("Disc %", format="%.1f%%", min_value=0, max_value=10),
                 }
             )
@@ -407,9 +426,9 @@ with tab_wins:
 <div style="background:#0d2818; padding:20px 28px; border-radius:10px; border-left:4px solid #2ecc71; margin:16px 0">
   <h4 style="color:#2ecc71; margin:0 0 8px 0">Peak Discovery Windows</h4>
   <p style="color:#ccc; margin:0; font-size:16px; line-height:1.8">
-    <b style="color:white">Best hours:</b> {top_h} UTC<br>
+    <b style="color:white">Best hours:</b> {top_h} """ + TZ_LABEL + """<br>
     <b style="color:white">Best days:</b> {top_d}<br>
-    <b style="color:white">Sweet spot:</b> {top_d} between {top_h.split(",")[0]} UTC
+    <b style="color:white">Sweet spot:</b> {top_d} between {top_h.split(",")[0]} """ + TZ_LABEL + """
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -428,7 +447,7 @@ with tab_wins:
 
             date_str = ""
             try:
-                date_str = call["start_time"].strftime("%a %b %d, %H:%M UTC")
+                date_str = call["start_time"].strftime("%a %b %d, %H:%M " + TZ_LABEL)
             except Exception:
                 pass
 
@@ -452,7 +471,39 @@ with tab_wins:
                     try:
                         parsed = json.loads(objs)
                         if parsed:
-                            st.warning(f"**Objections overcome:** {', '.join(parsed)}")
+                            st.warning(f"**Objections faced:** {', '.join(parsed)}")
+                            # Show handling guide for each objection
+                            _obj_responses = {
+                                "not interested": "\"Totally fair. But quick question: are you paying more than $12 per shirt on your uniforms right now?\"",
+                                "we have a vendor": "\"Most of our clients did too. They switched because we saved them 30% on better quality. Would you be open to a side-by-side comparison?\"",
+                                "i have a company": "\"Most of our clients did too. They switched because we saved them 30% on better quality. Would you be open to a side-by-side comparison?\"",
+                                "send me info": "\"For sure. So I send the right stuff — are you guys mostly using polos, t-shirts, or work jackets?\"",
+                                "email me": "\"For sure. So I send the right stuff — are you guys mostly using polos, t-shirts, or work jackets?\"",
+                                "too busy": "\"Respect that. Quick yes or no: are you paying more than $12 per piece right now?\"",
+                                "don't have 15 minutes": "\"Respect that. Quick yes or no: are you paying more than $12 per piece right now?\"",
+                                "i don't even have 15 minutes": "\"Respect that. Quick yes or no: are you paying more than $12 per piece right now?\"",
+                                "can't beat my prices": "\"Maybe, maybe not. What are you paying per piece? If I can't beat it, I'll tell you straight.\"",
+                                "i highly doubt you can beat the prices": "\"Maybe, maybe not. What are you paying per piece? If I can't beat it, I'll tell you straight.\"",
+                                "we do in-house": "\"How many hours a month does someone spend on orders, tracking, replacements? We usually save 5-10 hours on that alone.\"",
+                                "talk to the owner": "\"Totally. What's their name and direct line so I can mention you referred me?\"",
+                                "just got uniforms": "\"No worries. When do you usually reorder? I'll reach out with pricing before your next buy.\"",
+                                "i don't need the uniform now": "\"Not asking you to buy now. When's your next reorder? I'll send pricing so you can compare.\"",
+                                "keep you in mind": "\"Appreciate that. What would need to change for you to look at alternatives?\"",
+                                "i'll pass": "\"Before I go — what would need to change about your current setup for you to consider alternatives?\"",
+                                "i don't pay that much": "\"Good — what are you paying? If we can match or beat it with better quality, worth 2 minutes?\"",
+                                "my day is very busy": "\"I hear you. I'll be quick: are you happy with your current uniform quality and price? Yes or no.\"",
+                                "i can't change nothing": "\"Not asking you to change today. Just want to show you what's out there so you have options.\"",
+                                "just give me your number": "\"Sure — it's [NUMBER]. But honestly, I'll follow up [DAY] with a quick text and 3 styles with pricing. Fair?\"",
+                            }
+                            for obj in parsed:
+                                obj_lower = obj.strip().lower()
+                                response = None
+                                for key, val in _obj_responses.items():
+                                    if key in obj_lower or obj_lower in key:
+                                        response = val
+                                        break
+                                if response:
+                                    st.info(f"**How to handle \"{obj}\":** {response}")
                     except Exception:
                         pass
 
@@ -655,7 +706,7 @@ a single question.
 
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        st.markdown("**Discovery Rate by Hour (UTC)**")
+        st.markdown("**Discovery Rate by Hour**")
         if not hour_perf.empty:
             chart_data = hour_perf.set_index("hour")[["Dials", "Rate"]].rename(columns={"Rate":"Discovery %"})
             st.bar_chart(chart_data, height=300)
@@ -664,9 +715,9 @@ a single question.
         if not best_hours.empty:
             top_hour = best_hours.iloc[0]
             st.markdown(f"""
-- **Peak hour:** {int(top_hour['hour'])}:00 UTC ({top_hour['Rate']}% discovery rate)
-- **Power block:** 13:00-17:00 UTC (highest concentration of discoveries)
-- **Avoid:** Before 13:00 (low volume, 0% discovery) and after 19:00 (prospects gone for the day)
+- **Peak hour:** {int(top_hour['hour'])}:00 ({top_hour['Rate']}% discovery rate)
+- **Concentrate dials** in the hours with highest discovery rate above
+- **Avoid** early morning and late afternoon (prospects gone for the day)
 - **Best days:** Wednesday (highest %) and Thursday
 - **Worst days:** Monday and Friday (meeting-heavy days for prospects)
 """)
