@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data: keep calls.db tracked (needed for Streamlit Cloud deploys),
+# but exclude the big MP3s and transcript text files.
+data/recordings/
+data/transcripts/
+
+reports/
