@@ -1092,83 +1092,94 @@ with tab_leads:
         total_leads = len(leads_df)
         with_phone = (leads_df["phone"].notna() & (leads_df["phone"] != "")).sum()
         with_contact = (leads_df["contact_name"].notna() & (leads_df["contact_name"] != "")).sum()
-        today_leads = (leads_df["generated_date"] == datetime.now().strftime("%Y-%m-%d")).sum()
+        top_priority = (leads_df["priority"].str.contains("TOP", na=False)).sum() if "priority" in leads_df.columns else 0
 
         l1.metric("Total Leads", f"{total_leads:,}")
-        l2.metric("Generated Today", f"{today_leads:,}")
-        l3.metric("With Phone #", f"{with_phone:,}", f"{100*with_phone/max(total_leads,1):.0f}%")
-        l4.metric("With Contact Name", f"{with_contact:,}", f"{100*with_contact/max(total_leads,1):.0f}%")
+        l2.metric("With Phone", f"{with_phone:,}", f"{100*with_phone/max(total_leads,1):.0f}%")
+        l3.metric("With Contact", f"{with_contact:,}", f"{100*with_contact/max(total_leads,1):.0f}%")
+        l4.metric("TOP Priority", f"{top_priority:,}")
 
         st.divider()
 
         # Filters
-        fl1, fl2, fl3 = st.columns(3)
+        fl1, fl2, fl3, fl4 = st.columns(4)
         with fl1:
-            lead_dates = sorted(leads_df["generated_date"].dropna().unique(), reverse=True)
-            lead_date_filter = st.selectbox("Date", ["All"] + list(lead_dates))
+            lead_cities = ["All"] + sorted(leads_df["city"].dropna().unique())
+            lead_city_filter = st.selectbox("City", lead_cities)
         with fl2:
-            lead_cities = sorted(leads_df["city"].dropna().unique())
-            lead_city_filter = st.selectbox("City", ["All"] + list(lead_cities))
+            lead_segments = ["All"] + sorted(leads_df["segment"].dropna().unique()) if "segment" in leads_df.columns else ["All"]
+            lead_segment_filter = st.selectbox("Segment", lead_segments)
         with fl3:
-            lead_industries = sorted(leads_df["industry"].dropna().unique())
-            lead_industry_filter = st.selectbox("Industry", ["All"] + list(lead_industries))
+            prio_options = ["All"] + sorted(leads_df["priority"].dropna().unique().tolist()) if "priority" in leads_df.columns else ["All"]
+            lead_prio_filter = st.selectbox("Priority", prio_options)
+        with fl4:
+            phone_filter = st.selectbox("Phone", ["All", "With phone only", "Missing phone"])
 
         filtered_leads = leads_df.copy()
-        if lead_date_filter != "All":
-            filtered_leads = filtered_leads[filtered_leads["generated_date"] == lead_date_filter]
         if lead_city_filter != "All":
             filtered_leads = filtered_leads[filtered_leads["city"] == lead_city_filter]
-        if lead_industry_filter != "All":
-            filtered_leads = filtered_leads[filtered_leads["industry"] == lead_industry_filter]
+        if lead_segment_filter != "All":
+            filtered_leads = filtered_leads[filtered_leads["segment"] == lead_segment_filter]
+        if lead_prio_filter != "All":
+            filtered_leads = filtered_leads[filtered_leads["priority"] == lead_prio_filter]
+        if phone_filter == "With phone only":
+            filtered_leads = filtered_leads[filtered_leads["phone"].notna() & (filtered_leads["phone"] != "")]
+        elif phone_filter == "Missing phone":
+            filtered_leads = filtered_leads[filtered_leads["phone"].isna() | (filtered_leads["phone"] == "")]
 
         st.markdown(f"**{len(filtered_leads)} leads**")
 
-        # Display leads as expandable cards
-        for _, lead in filtered_leads.iterrows():
-            contact_info = ""
-            if lead.get("contact_name"):
-                contact_info = f" · **{lead['contact_name']}**"
-                if lead.get("contact_title"):
-                    contact_info += f" ({lead['contact_title']})"
+        # Main data table with all key columns
+        display_cols = []
+        col_config = {}
+        for col in ["company_name","segment","city","state","phone","website","contact_name","title","size","priority","notes","angle"]:
+            if col in filtered_leads.columns:
+                display_cols.append(col)
 
-            phone_display = lead.get("phone", "")
-            if phone_display:
-                phone_display = f" · {phone_display}"
-
-            header = f"**{lead['company_name']}** — {lead.get('city', '')}, {lead.get('state', '')}{contact_info}{phone_display}"
-
-            with st.expander(header, expanded=False):
-                mc1, mc2 = st.columns([2, 1])
-                with mc1:
-                    if lead.get("briefing"):
-                        st.markdown(f"**Briefing:** {lead['briefing']}")
-                    st.markdown(f"**Industry:** {lead.get('industry', '-')}")
-                    st.markdown(f"**Employees:** ~{lead.get('employee_estimate', '?')}")
-                    if lead.get("address"):
-                        st.markdown(f"**Address:** {lead['address']}")
-                    if lead.get("website"):
-                        st.markdown(f"**Website:** {lead['website']}")
-                with mc2:
-                    if lead.get("phone"):
-                        st.markdown(f"### {lead['phone']}")
-                    if lead.get("contact_name"):
-                        st.markdown(f"**Ask for:** {lead['contact_name']}")
-                        if lead.get("contact_title"):
-                            st.markdown(f"*{lead['contact_title']}*")
+        if display_cols:
+            rename_map = {
+                "company_name": "Company",
+                "segment": "Segment",
+                "city": "City",
+                "state": "ST",
+                "phone": "Phone",
+                "website": "Website",
+                "contact_name": "Contact",
+                "title": "Title",
+                "size": "Size",
+                "priority": "Priority",
+                "notes": "Pre-call Notes",
+                "angle": "Angle / Hook",
+            }
+            table_df = filtered_leads[display_cols].rename(columns=rename_map)
+            st.dataframe(
+                table_df,
+                use_container_width=True,
+                hide_index=True,
+                height=600,
+                column_config={
+                    "Phone": st.column_config.TextColumn("Phone", width="medium"),
+                    "Company": st.column_config.TextColumn("Company", width="medium"),
+                    "Contact": st.column_config.TextColumn("Contact", width="medium"),
+                    "Pre-call Notes": st.column_config.TextColumn("Pre-call Notes", width="large"),
+                    "Angle / Hook": st.column_config.TextColumn("Angle / Hook", width="large"),
+                    "Website": st.column_config.TextColumn("Website", width="medium"),
+                }
+            )
 
         # Distribution charts
         st.divider()
         col_ld1, col_ld2 = st.columns(2)
         with col_ld1:
             st.markdown("**Leads by City**")
-            city_counts = filtered_leads["city"].value_counts().head(10)
+            city_counts = filtered_leads["city"].value_counts().head(15)
             if not city_counts.empty:
                 st.bar_chart(city_counts)
         with col_ld2:
-            st.markdown("**Leads by Industry**")
-            ind_counts = filtered_leads["industry"].value_counts().head(10)
-            if not ind_counts.empty:
-                st.bar_chart(ind_counts)
+            st.markdown("**Leads by Segment**")
+            seg_counts = filtered_leads["segment"].value_counts().head(15) if "segment" in filtered_leads.columns else pd.Series()
+            if not seg_counts.empty:
+                st.bar_chart(seg_counts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
