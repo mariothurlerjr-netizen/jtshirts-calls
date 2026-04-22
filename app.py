@@ -744,55 +744,67 @@ with tab_playbook:
 
     with col_icp1:
         st.markdown("""
-<div style="background:#0d1f0d; padding:20px; border-radius:10px; border:1px solid #2ecc7133">
+<div style="background:#0d1f0d; padding:20px; border-radius:10px; border:1px solid #2ecc7133; color:#e0e0e0">
 <h4 style="color:#2ecc71; margin:0 0 12px 0">CALL THESE</h4>
 
-**Industries:**
-- Cleaning / Janitorial companies
-- HVAC / Plumbing / Electrical contractors
-- Construction companies
-- Restaurants / Food service
-- Landscaping / Property maintenance
-- Logistics / Delivery services
-- Auto shops / Mechanics
+<p style="color:#e0e0e0"><b style="color:#fff">Industries:</b></p>
+<ul style="color:#e0e0e0">
+<li>Cleaning / Janitorial companies</li>
+<li>HVAC / Plumbing / Electrical contractors</li>
+<li>Construction companies</li>
+<li>Restaurants / Food service</li>
+<li>Landscaping / Property maintenance</li>
+<li>Logistics / Delivery services</li>
+<li>Auto shops / Mechanics</li>
+</ul>
 
-**Company profile:**
-- 10-100 employees
-- Local phone number (direct line or cell)
-- Owner or Operations Manager reachable
-- Currently buying uniforms from someone
+<p style="color:#e0e0e0"><b style="color:#fff">Company profile:</b></p>
+<ul style="color:#e0e0e0">
+<li>10-100 employees</li>
+<li>Local phone number (direct line or cell)</li>
+<li>Owner or Operations Manager reachable</li>
+<li>Currently buying uniforms from someone</li>
+</ul>
 
-**Best regions (from data):**
-- Phoenix AZ — highest discovery rate
-- Boston MA — strong engagement
-- Detroit MI — responsive market
-- Dallas TX (469 area) — good results
+<p style="color:#e0e0e0"><b style="color:#fff">Best regions (from data):</b></p>
+<ul style="color:#e0e0e0">
+<li>Phoenix AZ — highest discovery rate</li>
+<li>Boston MA — strong engagement</li>
+<li>Detroit MI — responsive market</li>
+<li>Dallas TX (469 area) — good results</li>
+</ul>
 </div>
 """, unsafe_allow_html=True)
 
     with col_icp2:
         st.markdown("""
-<div style="background:#1f0d0d; padding:20px; border-radius:10px; border:1px solid #e74c3c33">
+<div style="background:#1f0d0d; padding:20px; border-radius:10px; border:1px solid #e74c3c33; color:#e0e0e0">
 <h4 style="color:#e74c3c; margin:0 0 12px 0">DO NOT CALL THESE</h4>
 
-**Automatic disqualifiers:**
-- Toll-free numbers (800, 888, 877, 866, 855, 844, 833)
-- Hospitals and healthcare systems
-- Enterprise corporations (Wayfair, ADT, etc.)
-- Government offices
-- Schools / Universities
-- Companies with < 5 employees
-- Residential numbers
+<p style="color:#e0e0e0"><b style="color:#fff">Automatic disqualifiers:</b></p>
+<ul style="color:#e0e0e0">
+<li>Toll-free numbers (800, 888, 877, 866, 855, 844, 833)</li>
+<li>Hospitals and healthcare systems</li>
+<li>Enterprise corporations (Wayfair, ADT, etc.)</li>
+<li>Government offices</li>
+<li>Schools / Universities</li>
+<li>Companies with &lt; 5 employees</li>
+<li>Residential numbers</li>
+</ul>
 
-**Dead-zone regions (from data):**
-- NYC (718/212/347) — 110+ calls, 0 discoveries
-- Philadelphia (215/267) — 40 calls, 0 discoveries
-- Portland (503) — 17 calls, 0 discoveries, avg 26s
+<p style="color:#e0e0e0"><b style="color:#fff">Dead-zone regions (from data):</b></p>
+<ul style="color:#e0e0e0">
+<li>NYC (718/212/347) — 110+ calls, 0 discoveries</li>
+<li>Philadelphia (215/267) — 40 calls, 0 discoveries</li>
+<li>Portland (503) — 17 calls, 0 discoveries, avg 26s</li>
+</ul>
 
-**Red flags in caller ID:**
-- "HOSPITAL", "MEDICAL", "HEALTH"
-- "UNIVERSITY", "SCHOOL", "COLLEGE"
-- "COUNTY", "STATE", "CITY OF"
+<p style="color:#e0e0e0"><b style="color:#fff">Red flags in caller ID:</b></p>
+<ul style="color:#e0e0e0">
+<li>"HOSPITAL", "MEDICAL", "HEALTH"</li>
+<li>"UNIVERSITY", "SCHOOL", "COLLEGE"</li>
+<li>"COUNTY", "STATE", "CITY OF"</li>
+</ul>
 </div>
 """, unsafe_allow_html=True)
 
