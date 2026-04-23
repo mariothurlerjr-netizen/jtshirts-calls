@@ -208,9 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_rp_period ON rep_performance(period_start, period
 
 def connect():
     conn = sqlite3.connect(config.DB_PATH, timeout=30)
-    # Allow concurrent readers/writers
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")  # ms
+    conn.execute("PRAGMA busy_timeout=30000")  # ms, tolerates concurrent writers
     conn.executescript(SCHEMA)
     conn.executescript(CRM_SCHEMA)
     # Idempotent migrations for DBs created with earlier schema
