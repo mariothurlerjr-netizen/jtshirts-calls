@@ -279,20 +279,20 @@ def _metro(ac):
 
 st.markdown("""
 <style>
-  /* Sidebar — narrower + compact, all items fit on one screen */
+  /* Sidebar — narrower + compact, proper spacing between sections */
   section[data-testid="stSidebar"] {
     background: #F8FAFC;
     border-right: 1px solid #e2e8f0;
-    width: 200px !important;
-    min-width: 200px !important;
+    width: 210px !important;
+    min-width: 210px !important;
   }
-  section[data-testid="stSidebar"] > div:first-child { padding-top: 0.5rem; }
+  section[data-testid="stSidebar"] > div:first-child { padding-top: 1rem; }
   section[data-testid="stSidebar"] .stButton > button {
-    justify-content: flex-start; text-align: left; padding: 3px 8px;
-    font-size: 12px; font-weight: 500; border-radius: 4px; margin: 0;
-    min-height: 26px; line-height: 1.2;
+    justify-content: flex-start; text-align: left; padding: 4px 10px;
+    font-size: 12.5px; font-weight: 500; border-radius: 4px; margin: 0;
+    min-height: 28px; line-height: 1.25;
   }
-  section[data-testid="stSidebar"] .stButton { margin-bottom: 1px; }
+  section[data-testid="stSidebar"] .stButton { margin-bottom: 2px; }
   section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
     background: #0F1B2D; color: #fff; border-color: #0F1B2D;
   }
@@ -302,12 +302,23 @@ st.markdown("""
   section[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
     background: #e2e8f0; color: #0F1B2D;
   }
-  section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0 !important; }
+  section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 2px !important; }
+  /* Section header in sidebar — give it breathing room */
+  section[data-testid="stSidebar"] .nav-section-header {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: #94a3b8 !important;
+    letter-spacing: 1.4px;
+    margin: 16px 0 6px 0 !important;
+    padding: 0 2px;
+  }
   /* Tighter main content */
-  .main .block-container { padding-top: 1.2rem; max-width: 1500px; padding-left: 2rem; padding-right: 2rem; }
+  .main .block-container { padding-top: 2rem; max-width: 1500px; padding-left: 2rem; padding-right: 2rem; }
   /* Metric polish */
   [data-testid="stMetric"] {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
     padding: 10px 14px;
   }
   /* Popover button — compact */
@@ -420,7 +431,7 @@ with st.sidebar:
 
     all_pages = []
     for group_name, items in NAV_SECTIONS:
-        st.markdown(f"<div style='font-size:10px; font-weight:600; color:#94a3b8; letter-spacing:1.4px; margin:14px 0 6px 0;'>{group_name}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='nav-section-header'>{group_name}</div>", unsafe_allow_html=True)
         for label, page_id in items:
             all_pages.append(page_id)
         if "current_page" not in st.session_state:
@@ -460,7 +471,7 @@ needs_filters = page in PAGES_WITH_FILTERS
 title_cols = st.columns([6, 1]) if needs_filters else st.columns([1])
 with title_cols[0]:
     st.markdown(
-        f"<div style='display:flex; align-items:baseline; gap:14px; margin:4px 0 14px 0;'>"
+        f"<div style='display:flex; align-items:baseline; gap:14px; margin:8px 0 18px 0;'>"
         f"<h2 style='margin:0; font-size:22px; font-weight:600; color:#0F1B2D; letter-spacing:-0.3px;'>{page}</h2>"
         f"<div style='font-size:10px; color:#94a3b8; letter-spacing:1px;'>FUSO {TZ_LABEL} · IDAHO</div>"
         f"</div>", unsafe_allow_html=True
@@ -1835,7 +1846,8 @@ A rep fumbling a DM conversation gets a low score even if the call lasted 10 min
         Avg_Dur=("duration", "mean"),
     ).reset_index()
 
-    rep_stats = rep_stats[rep_stats["Dials"] >= 10].sort_values("Dials", ascending=False)
+    # Show every rep with at least one dial (Aleksa, Hebron etc. may have few)
+    rep_stats = rep_stats[rep_stats["Dials"] >= 1].sort_values("Dials", ascending=False)
     rep_stats["Connected %"] = (100 * rep_stats["Connected"] / rep_stats["Dials"]).round(1)
     rep_stats["DM %"] = (100 * rep_stats["Real_Discovery"] / rep_stats["Dials"]).round(1)
     rep_stats["IVR %"] = (100 * rep_stats["IVR"] / rep_stats["Dials"]).round(1)
