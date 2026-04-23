@@ -10,3 +10,4 @@ data/recordings/
 data/transcripts/
 
 reports/
+data/cron.log

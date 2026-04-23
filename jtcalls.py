@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from lib import config, db, classify, whisper, leadgen
+from lib import config, db, classify, whisper, leadgen, enrich, crm
 from lib.rc import RingCentralClient
 
 
@@ -206,6 +206,190 @@ def cmd_classify(args):
         conn.close()
 
 
+def cmd_enrich(args):
+    """Run LLM enrichment on transcripts that don't have enrichment yet."""
+    config.validate()
+    conn = db.connect()
+    try:
+        only_classes = None
+        if args.only:
+            only_classes = [c.strip() for c in args.only.split(",") if c.strip()]
+        rows = crm.calls_to_enrich(conn, only_classes=only_classes, reenrich=args.reenrich)
+        log.info("To enrich: %d calls", len(rows))
+        if args.limit:
+            rows = rows[: args.limit]
+            log.info("  limiting to %d", len(rows))
+        if not rows:
+            return
+
+        ok = fail = 0
+        for row in tqdm(rows, desc="Enriching", unit="call"):
+            try:
+                data = enrich.enrich_transcript(
+                    transcript=row["transcript"],
+                    rep_name=row["from_name"] or "",
+                    duration=row["duration"] or 0,
+                    result=row["result"] or "",
+                    classification=row["classification"] or "",
+                    company=row["to_name"] or "",
+                )
+                crm.save_enrichment(conn, row["id"], dict(row), data)
+                ok += 1
+                if ok % 10 == 0:
+                    conn.commit()
+            except Exception as e:
+                log.warning("  enrich fail %s: %s", row["id"], str(e)[:120])
+                fail += 1
+
+        conn.commit()
+        db.log_sync(conn, "enrich", processed=ok, failed=fail)
+        conn.commit()
+        log.info("✓ Enrich done: ok=%d fail=%d", ok, fail)
+    finally:
+        conn.close()
+
+
+def cmd_aggregate(args):
+    """Rebuild accounts + rep_performance from current calls + enrichments."""
+    conn = db.connect()
+    try:
+        n = crm.aggregate_accounts(conn)
+        log.info("✓ Aggregated %d accounts", n)
+        crm.compute_rep_performance(conn, period_days=30)
+        log.info("✓ Rep performance snapshot refreshed (last 30d)")
+        conn.commit()
+        db.log_sync(conn, "aggregate", processed=n)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def cmd_import_leads(args):
+    """Import master leads spreadsheet into accounts (joined by normalized phone)."""
+    from pathlib import Path
+    import pandas as pd
+    from lib.crm import _normalize_phone, _now
+
+    path = Path(args.file).expanduser().resolve()
+    if not path.exists():
+        log.error("File not found: %s", path)
+        sys.exit(1)
+
+    log.info("Reading %s", path)
+    xl = pd.ExcelFile(path)
+    log.info("Sheets: %s", xl.sheet_names)
+
+    # Skip summary sheets (Resumo/Summary), read rest
+    SKIP_SHEETS = {"resumo", "summary", "overview", "sumario"}
+    frames = []
+    for s in xl.sheet_names:
+        if s.lower() in SKIP_SHEETS:
+            log.info("  skip summary sheet: %s", s)
+            continue
+        sdf = xl.parse(s)
+        sdf["_source_sheet"] = s
+        frames.append(sdf)
+        log.info("  sheet '%s': %d rows", s, len(sdf))
+    if not frames:
+        log.error("No data sheets found.")
+        sys.exit(1)
+    df = pd.concat(frames, ignore_index=True)
+    log.info("Total rows: %d", len(df))
+
+    # Auto-detect columns (case/space-insensitive match)
+    def col_match(keywords):
+        for c in df.columns:
+            cn = str(c).lower().replace("_", "").replace(" ", "")
+            for kw in keywords:
+                if kw in cn:
+                    return c
+        return None
+
+    col_phone = col_match(["phone", "telefone"])
+    col_company = col_match(["empresa", "company", "name"])
+    col_city = col_match(["cidade", "city"])
+    col_state = col_match(["estado", "state"])
+    col_industry = col_match(["segmento", "industry", "vertical", "segment", "categoria"])
+    col_contact = col_match(["ownernome", "ownername", "contactname", "nomeowner", "contatonome", "dono"])
+    col_title = col_match(["ownertitle", "title", "cargo", "position"])
+    col_email_owner = col_match(["emailowner", "owneremail", "emailpessoal", "emailpersonal"])
+    col_email_general = col_match(["emailgeral", "generalemail", "emailgeneric", "emailinfo"])
+    col_website = col_match(["website", "site", "url", "domain"])
+
+    log.info("Column mapping: phone=%s company=%s industry=%s city=%s state=%s contact=%s title=%s email_owner=%s email_gen=%s website=%s",
+             col_phone, col_company, col_industry, col_city, col_state, col_contact, col_title, col_email_owner, col_email_general, col_website)
+
+    if not col_phone:
+        log.error("No phone column detected — required")
+        sys.exit(1)
+
+    conn = db.connect()
+    try:
+        ins = upd = skipped = 0
+        for _, row in df.iterrows():
+            phone_raw = str(row[col_phone] or "")
+            account_id = _normalize_phone(phone_raw)
+            if not account_id or len(account_id) < 7:
+                skipped += 1
+                continue
+
+            def val(c):
+                if not c:
+                    return None
+                v = row.get(c)
+                if pd.isna(v):
+                    return None
+                return str(v).strip() or None
+
+            existing = conn.execute(
+                "SELECT account_id, company_name FROM accounts WHERE account_id = ?",
+                (account_id,)
+            ).fetchone()
+
+            if existing:
+                conn.execute("""
+                    UPDATE accounts SET
+                        company_name = COALESCE(?, company_name),
+                        city = COALESCE(?, city),
+                        state = COALESCE(?, state),
+                        industry = COALESCE(?, industry),
+                        contact_name = COALESCE(?, contact_name),
+                        contact_title = COALESCE(?, contact_title),
+                        contact_email = COALESCE(?, contact_email),
+                        contact_email_general = COALESCE(?, contact_email_general),
+                        website = COALESCE(?, website),
+                        lead_source = COALESCE(lead_source, 'master_spreadsheet'),
+                        updated_at = ?
+                    WHERE account_id = ?
+                """, (
+                    val(col_company), val(col_city), val(col_state), val(col_industry),
+                    val(col_contact), val(col_title), val(col_email_owner),
+                    val(col_email_general), val(col_website),
+                    _now(), account_id,
+                ))
+                upd += 1
+            else:
+                conn.execute("""
+                    INSERT INTO accounts (
+                        account_id, primary_phone, company_name, city, state, industry,
+                        contact_name, contact_title, contact_email, contact_email_general,
+                        website, lead_source, stage, score, total_calls, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    account_id, phone_raw,
+                    val(col_company), val(col_city), val(col_state), val(col_industry),
+                    val(col_contact), val(col_title), val(col_email_owner),
+                    val(col_email_general), val(col_website),
+                    "master_spreadsheet", "Cold", 0, 0, _now(),
+                ))
+                ins += 1
+
+        conn.commit()
+        log.info("✓ Leads imported: inserted=%d updated=%d skipped=%d", ins, upd, skipped)
+    finally:
+        conn.close()
+
+
 def cmd_dashboard(args):
     """Launch the Streamlit dashboard locally."""
     import subprocess
@@ -266,7 +450,7 @@ def cmd_leadgen(args):
 
 
 def cmd_daily(args):
-    """Incremental daily run: fetch new, download, transcribe, classify, dashboard."""
+    """Incremental daily run: fetch new, download, transcribe, classify, enrich, aggregate."""
     log.info("=== DAILY PIPELINE ===")
     args.days = 3  # overlap 3 days for safety
     args.since = None
@@ -279,11 +463,15 @@ def cmd_daily(args):
     args.reclassify = False
     cmd_classify(args)
 
-    args.open = False
-    cmd_dashboard(args)
+    # New CRM stages
+    args.only = None
+    args.reenrich = False
+    args.limit = None
+    cmd_enrich(args)
+    cmd_aggregate(args)
 
     log.info("=== DAILY DONE ===")
-    log.info("Dashboard: %s", config.REPORTS_DIR / "dashboard.html")
+    log.info("Run `streamlit run app.py` to view dashboard locally")
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -317,6 +505,19 @@ Common workflows:
     pc.add_argument("--reclassify", action="store_true", help="Re-classify all calls")
     pc.set_defaults(func=cmd_classify)
 
+    pe = sub.add_parser("enrich", help="LLM enrichment: score, BANT, next-step, objections, coaching")
+    pe.add_argument("--only", help="Comma-separated classifications to enrich (e.g. real_discovery,gatekeeper)")
+    pe.add_argument("--reenrich", action="store_true", help="Re-enrich calls that already have enrichment")
+    pe.add_argument("--limit", type=int, help="Max calls to process this run")
+    pe.set_defaults(func=cmd_enrich)
+
+    pa = sub.add_parser("aggregate", help="Rebuild accounts + rep performance from calls/enrichments")
+    pa.set_defaults(func=cmd_aggregate)
+
+    pil = sub.add_parser("import-leads", help="Import master leads xlsx into accounts (by phone)")
+    pil.add_argument("--file", required=True, help="Path to the master xlsx")
+    pil.set_defaults(func=cmd_import_leads)
+
     ph = sub.add_parser("dashboard", help="Generate HTML dashboard")
     ph.add_argument("--open", action="store_true", help="Open in browser after generating")
     ph.set_defaults(func=cmd_dashboard)
@@ -337,7 +538,8 @@ Common workflows:
         sys.exit(1)
 
     # Fill in missing attributes for composed commands
-    for attr in ("days", "since", "min_duration", "reclassify", "open"):
+    for attr in ("days", "since", "min_duration", "reclassify", "open",
+                 "only", "reenrich", "limit", "file"):
         if not hasattr(args, attr):
             setattr(args, attr, None)
 
