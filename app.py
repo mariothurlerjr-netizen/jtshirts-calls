@@ -19,6 +19,8 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
+from lib.guides import GATEKEEPER_MATRIX
+
 # ─── Timezone ───────────────────────────────────────────────────────────────
 # Convert all times to display timezone (default: America/New_York = ET)
 import os
@@ -1356,6 +1358,9 @@ a single question.
 
 if page == "Sales Playbook":
 
+    with st.expander("Gatekeeper Response Matrix — pre-approved scripts for every gatekeeper scenario", expanded=False):
+        st.markdown(GATEKEEPER_MATRIX)
+
     st.markdown("""
 <div style="background:linear-gradient(135deg,#1a2847 0%,#0F1B2D 100%); padding:28px 36px; border-radius:12px; margin-bottom:20px">
   <h2 style="color:#C5A572; margin:0 0 8px 0">J T-Shirts — Sales Playbook</h2>
@@ -2140,6 +2145,40 @@ if page == "Call Explorer":
 # ═══════════════════════════════════════════════════════════════════════════
 
 if page == "CRM":
+    with st.expander("How the CRM works", expanded=False):
+        st.markdown(
+            "This is the pipeline view. Every company in the list is an **account** "
+            "and every account sits in one **stage** — from **New leads** (never "
+            "dialed) all the way to **Won** / **Nurture** / **Lost**.\n\n"
+            "**Stages, in order:**\n"
+            "- **New leads** — on the list, no calls yet. This is the fuel.\n"
+            "- **Attempted** — dialed, didn't connect with a human (IVR, voicemail, no answer).\n"
+            "- **Gatekeeper** — receptionist/assistant blocked the rep.\n"
+            "- **DM Reached** — rep spoke with the actual decision-maker.\n"
+            "- **Email to Send** — DM asked for info → rep needs to send email.\n"
+            "- **Meeting** — a meeting has been booked with day/time.\n"
+            "- **Proposal** — quote or sample shipped.\n"
+            "- **Won** — deal closed (manual).\n"
+            "- **Nurture** — dormant for now, come back later (set a revisit date).\n"
+            "- **Lost** — dead lead (manual).\n\n"
+            "**How to use it:**\n"
+            "1. **Upload leads** (button top-left) to import a spreadsheet. New rows "
+            "land in **New leads**.\n"
+            "2. **Assign round-robin** (button next to upload) distributes the "
+            "untouched leads evenly among selected reps.\n"
+            "3. **Click any card** to open the account: editable company info, "
+            "rep notes, revisit date, add a next step (email/call/catalog), and "
+            "the full call history with transcripts.\n"
+            "4. **Move →** dropdown on each card manually changes the stage. Use "
+            "this after a good call to move to Meeting, or after a brush-off to "
+            "move to Nurture with a revisit date.\n\n"
+            "Stages advance **automatically** as calls happen — but Nurture, Won "
+            "and Lost are **always manual** (the system never reverts them)."
+        )
+
+    with st.expander("Gatekeeper Response Matrix — pre-approved responses for every cold call scenario", expanded=False):
+        st.markdown(GATEKEEPER_MATRIX)
+
     acc_df = crm["accounts"]
 
     # ─── UPLOAD + ROUND-ROBIN bar ───────────────────────────────────────────
@@ -3173,6 +3212,9 @@ if page == "Meeting Conversion":
 if page == "Coaching":
     st.markdown("### Coaching")
     st.caption("Two lenses on the same data. **Objections** = patterns across the whole team. **Rep drill-down** = specific feedback per call.")
+
+    with st.expander("Gatekeeper Response Matrix — standardized scripts for every gatekeeper scenario", expanded=False):
+        st.markdown(GATEKEEPER_MATRIX)
 
     sub_tab_obj, sub_tab_rep = st.tabs(["Objections", "Rep drill-down"])
 
