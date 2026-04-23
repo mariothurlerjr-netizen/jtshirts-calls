@@ -54,11 +54,24 @@ DB_PATH = Path(__file__).parent / "data" / "calls.db"
 
 @st.cache_data(ttl=300)
 def load_data():
+    """Load the calls table WITHOUT the heavy transcript/raw_json columns.
+    Those are fetched on demand by _get_transcript() inside dialogs/expanders
+    to keep memory + startup time small."""
     if not DB_PATH.exists():
         return None
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    df = pd.read_sql("SELECT * FROM calls", conn, parse_dates=["start_time"])
+    # Explicit column list — skip transcript + raw_json (megabytes of text)
+    LIGHT_COLS = """
+        id, session_id, start_time, duration, direction, action, result, type,
+        from_number, from_name, from_ext_number,
+        to_number, to_name, to_ext_number,
+        extension_id, recording_id, recording_type,
+        transcript_status,
+        classification, classification_confidence, classification_reason,
+        objections_found, opener_extract, fetched_at
+    """
+    df = pd.read_sql(f"SELECT {LIGHT_COLS} FROM calls", conn, parse_dates=["start_time"])
     # Convert start_time to display timezone
     if not df.empty and df["start_time"].dt.tz is None:
         df["start_time"] = df["start_time"].dt.tz_localize("UTC")
@@ -68,6 +81,17 @@ def load_data():
         "calls": df,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
+
+
+@st.cache_data(ttl=600)
+def _get_transcript(call_id: str) -> str:
+    """Fetch a single transcript on demand."""
+    if not DB_PATH.exists():
+        return ""
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute("SELECT transcript FROM calls WHERE id = ?", (call_id,)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else ""
 
 
 @st.cache_data(ttl=60)
@@ -2081,7 +2105,8 @@ if page == "Call Explorer":
     with ce2:
         sort_by = st.selectbox("Sort by", ["Longest first", "Most recent first", "Shortest first"])
 
-    explorer_df = fdf[fdf["transcript"].notna() & (fdf["transcript"] != "")].copy()
+    # transcript column was removed from load_data; use transcript_status as proxy
+    explorer_df = fdf[fdf["transcript_status"] == "ok"].copy() if "transcript_status" in fdf.columns else fdf.copy()
 
     if class_filter != "All":
         explorer_df = explorer_df[explorer_df["classification"] == class_filter]
@@ -2137,7 +2162,7 @@ if page == "Call Explorer":
                     pass
 
             st.markdown("**Full Transcript:**")
-            st.text(call.get("transcript", "No transcript available."))
+            st.text(_get_transcript(call["id"]) or "No transcript available.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2631,11 +2656,10 @@ if page == "CRM":
                         if acct_enr.empty:
                             st.caption("No enriched calls yet for this account.")
                         else:
-                            # Need transcripts from the calls table
+                            # Pull start_time + duration from the light calls df; transcript is lazy-loaded
                             acct_enr = acct_enr.sort_values("enriched_at", ascending=False)
                             call_ids = acct_enr["call_id"].tolist()
-                            transcripts = df[df["id"].isin(call_ids)][["id", "start_time", "duration", "transcript"]]
-                            transcripts = transcripts.set_index("id")
+                            call_meta = df[df["id"].isin(call_ids)][["id", "start_time", "duration"]].set_index("id")
 
                             for _, ec in acct_enr.head(20).iterrows():
                                 cid = ec["call_id"]
@@ -2645,14 +2669,12 @@ if page == "CRM":
                                 summary = _s(ec.get("summary"))
                                 dt_str = ""
                                 dur_str = ""
-                                transcript = ""
-                                if cid in transcripts.index:
-                                    trow = transcripts.loc[cid]
+                                if cid in call_meta.index:
+                                    trow = call_meta.loc[cid]
                                     if pd.notna(trow["start_time"]):
                                         dt_str = trow["start_time"].strftime("%b %d, %Y · %H:%M")
                                     if pd.notna(trow["duration"]):
                                         dur_str = f"{int(trow['duration'])}s"
-                                    transcript = _s(trow.get("transcript"))
 
                                 with st.expander(f"{dt_str} · rep **{rep}** · reached `{who}` · score **{qs}** · {dur_str}"):
                                     if summary:
@@ -2674,10 +2696,9 @@ if page == "CRM":
                                         mresp = _s(ec.get("meeting_prospect_response"))
                                         result = "BOOKED" if (pd.notna(mb) and int(mb) == 1) else "rejected"
                                         st.markdown(f"**Meeting ask ({result}):** *\"{mphrase}\"* → *\"{mresp}\"*")
-                                    # Transcript
-                                    if transcript:
-                                        with st.expander("Full transcript"):
-                                            st.text(transcript)
+                                    # Transcript (lazy-loaded)
+                                    with st.expander("Full transcript"):
+                                        st.text(_get_transcript(cid) or "No transcript available.")
 
                         if st.button("Close", key="close_detail", type="primary"):
                             st.session_state["crm_selected_account"] = None
