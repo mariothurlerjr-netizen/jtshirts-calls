@@ -312,7 +312,10 @@ st.markdown("""
     width: 210px !important;
     min-width: 210px !important;
   }
-  section[data-testid="stSidebar"] > div:first-child { padding-top: 1rem; }
+  /* Remove top padding so the sidebar brand starts right at the top */
+  section[data-testid="stSidebar"] > div:first-child { padding-top: 0 !important; }
+  section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top: 0 !important; }
+  section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] { padding-top: 0.25rem !important; padding-bottom: 0 !important; }
   section[data-testid="stSidebar"] .stButton > button {
     justify-content: flex-start; text-align: left; padding: 4px 10px;
     font-size: 12.5px; font-weight: 500; border-radius: 4px; margin: 0;
@@ -338,8 +341,8 @@ st.markdown("""
     margin: 16px 0 6px 0 !important;
     padding: 0 2px;
   }
-  /* Tighter main content */
-  .main .block-container { padding-top: 2rem; max-width: 1500px; padding-left: 2rem; padding-right: 2rem; }
+  /* Tighter main content — less vertical padding so more content fits above the fold */
+  .main .block-container { padding-top: 1rem; max-width: 1500px; padding-left: 2rem; padding-right: 2rem; }
   /* Metric polish */
   [data-testid="stMetric"] {
     background: #ffffff;
@@ -449,9 +452,9 @@ NAV_SECTIONS = PUBLIC_NAV + (MANAGER_NAV if is_manager else [])
 
 with st.sidebar:
     st.markdown("""
-    <div style="padding:4px 0 20px 0;">
-      <div style="font-size:16px; font-weight:600; color:#0F1B2D; letter-spacing:-0.2px;">J T-Shirts</div>
-      <div style="font-size:10px; color:#94a3b8; letter-spacing:1.4px; font-weight:500; margin-top:2px;">CALL INTELLIGENCE</div>
+    <div style="padding:0 0 10px 0;">
+      <div style="font-size:15px; font-weight:600; color:#0F1B2D; letter-spacing:-0.2px;">J T-Shirts</div>
+      <div style="font-size:9.5px; color:#94a3b8; letter-spacing:1.4px; font-weight:500; margin-top:1px;">CALL INTELLIGENCE</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -2323,7 +2326,13 @@ if page == "CRM":
         # Browse + filters (popover, same pattern as Overview)
         rep_opts = sorted([r for r in acc_df["owner_rep"].dropna().unique() if r])
         industry_opts = sorted([r for r in acc_df["industry"].dropna().unique() if r])
-        default_stages = [s for s in STAGE_ORDER if s not in ("New leads", "Lost")]
+        default_stages = [s for s in STAGE_ORDER if s != "Lost"]
+
+        # Heal stale session state: old versions saved a filter that excluded
+        # "New leads". If we detect that, wipe it so the new defaults apply.
+        saved_stages = st.session_state.get("crm_stages")
+        if saved_stages is not None and "New leads" not in saved_stages:
+            del st.session_state["crm_stages"]
 
         header_cols = st.columns([6, 1])
         with header_cols[0]:
@@ -2371,10 +2380,8 @@ if page == "CRM":
         view = acc_df.copy()
         # Apply quick filter first
         if quick_filter == "New leads only":
-            view = view[
-                (view["owner_rep"].notna() & (view["owner_rep"] != "")) &
-                (view["total_calls"].fillna(0) == 0)
-            ]
+            # Just stage=New leads — regardless of whether a rep is assigned yet
+            view = view[view["stage"] == "New leads"]
         elif quick_filter == "My pipeline" and my_rep:
             view = view[view["owner_rep"] == my_rep]
         if stage_filter:
@@ -2425,7 +2432,13 @@ if page == "CRM":
             for col, stage in zip(cols, KANBAN_STAGES):
                 with col:
                     stage_accs = view[view["stage"] == stage]
-                    count = len(stage_accs)
+                    count_filtered = len(stage_accs)
+                    # Total count ignoring filters, so users always see the true
+                    # size of each stage in the header (never a confusing 0).
+                    count_total = int((acc_df["stage"] == stage).sum())
+                    badge_text = (f"{count_filtered} / {count_total}"
+                                  if count_filtered != count_total
+                                  else f"{count_total}")
                     color = STAGE_COLORS.get(stage, "#6b7280")
                     short = STAGE_SHORT.get(stage, stage.upper())
                     st.markdown(
@@ -2433,7 +2446,7 @@ if page == "CRM":
                         f"border-radius:5px; font-size:10.5px; font-weight:700; "
                         f"text-align:center; margin-bottom:6px; letter-spacing:0.5px; "
                         f"white-space:nowrap; overflow:hidden; text-overflow:ellipsis; height:26px; box-sizing:border-box;'>"
-                        f"{short} · {count}"
+                        f"{short} · {badge_text}"
                         f"</div>",
                         unsafe_allow_html=True
                     )

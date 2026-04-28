@@ -40,7 +40,7 @@ for d in [DATA_DIR, RECORDINGS_DIR, TRANSCRIPTS_DIR, REPORTS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Call quality thresholds (in seconds)
-MIN_DURATION_FOR_RECORDING_DOWNLOAD = 120  # only download 2min+
+MIN_DURATION_FOR_RECORDING_DOWNLOAD = 20  # only download 2min+
 MIN_DURATION_FOR_REAL_CALL = 15            # under this = no pickup or instant hangup
 
 
